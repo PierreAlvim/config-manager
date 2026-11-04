@@ -1,0 +1,137 @@
+name: config-manager
+
+x-keycloak-env: &oidc
+  Auth__Authority: http://localhost:8080/realms/config-manager
+  Auth__MetadataAddress: http://keycloak:8080/realms/config-manager/.well-known/openid-configuration
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: configmanager
+      POSTGRES_PASSWORD: configmanager
+      POSTGRES_DB: configmanager
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U configmanager -d configmanager"]
+      interval: 3s
+      retries: 30
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: kcadmin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: kcadmin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: configmanager
+      KC_DB_PASSWORD: configmanager
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_ENABLED: "true"
+    ports: ["8080:8080"]
+    volumes:
+      - ./keycloak/realm-config-manager.json:/opt/keycloak/data/import/realm-config-manager.json:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      # management interface (health) listens on 9000; image has no curl -> use bash /dev/tcp
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"UP\"' <&3"]
+      interval: 5s
+      retries: 60
+
+  management-api:
+    build:
+      context: .
+      dockerfile: docker/dotnet.Dockerfile
+      args:
+        PROJECT: src/Management/ConfigManager.Management.Api/ConfigManager.Management.Api.csproj
+        ASSEMBLY: ConfigManager.Management.Api
+    environment:
+      <<: *oidc
+      Auth__Audience: config-manager-api
+      ConnectionStrings__Postgres: Host=postgres;Database=configmanager;Username=configmanager;Password=configmanager
+      Seed__Enabled: "true"
+      Cors__Origins__0: http://localhost:3000
+      Cors__Origins__1: http://localhost:5173
+    ports: ["5001:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+
+  distribution-api:
+    build:
+      context: .
+      dockerfile: docker/dotnet.Dockerfile
+      args:
+        PROJECT: src/Distribution/ConfigManager.Distribution.Api/ConfigManager.Distribution.Api.csproj
+        ASSEMBLY: ConfigManager.Distribution.Api
+    environment:
+      <<: *oidc
+      Auth__Audience: config-distribution
+      ConnectionStrings__Postgres: Host=postgres;Database=configmanager;Username=configmanager;Password=configmanager
+    ports: ["5002:8080"]
+    depends_on:
+      management-api: { condition: service_healthy }
+
+  orders-api:
+    build:
+      context: .
+      dockerfile: docker/dotnet.Dockerfile
+      args:
+        PROJECT: src/Samples/Samples.Orders.Api/Samples.Orders.Api.csproj
+        ASSEMBLY: Samples.Orders.Api
+    environment:
+      ConfigManager__DistributionUrl: http://distribution-api:8080
+      ConfigManager__Namespace: orders
+      ConfigManager__Environment: dev
+      ConfigManager__TokenEndpoint: http://keycloak:8080/realms/config-manager/protocol/openid-connect/token
+      ConfigManager__ClientId: orders-service
+      ConfigManager__ClientSecret: orders-service-secret
+    ports: ["5101:8080"]
+    depends_on:
+      distribution-api: { condition: service_healthy }
+
+  payments-api:
+    build:
+      context: .
+      dockerfile: docker/dotnet.Dockerfile
+      args:
+        PROJECT: src/Samples/Samples.Payments.Api/Samples.Payments.Api.csproj
+        ASSEMBLY: Samples.Payments.Api
+    environment:
+      ConfigManager__DistributionUrl: http://distribution-api:8080
+      ConfigManager__Namespace: payments
+      ConfigManager__Environment: prod
+      ConfigManager__TokenEndpoint: http://keycloak:8080/realms/config-manager/protocol/openid-connect/token
+      ConfigManager__ClientId: payments-service
+      ConfigManager__ClientSecret: payments-service-secret
+    ports: ["5102:8080"]
+    depends_on:
+      distribution-api: { condition: service_healthy }
+
+  web:
+    build:
+      context: ./web
+    ports: ["3000:80"]
+    depends_on:
+      management-api: { condition: service_healthy }
+
+  tests:
+    profiles: ["test"]
+    build:
+      context: .
+      dockerfile: docker/tests.Dockerfile
+    environment:
+      TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  pgdata:

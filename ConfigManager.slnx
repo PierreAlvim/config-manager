@@ -1,0 +1,24 @@
+<Solution>
+  <Folder Name="/Contracts/">
+    <Project Path="src/Contracts/ConfigManager.Contracts/ConfigManager.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/Distribution/">
+    <Project Path="src/Distribution/ConfigManager.Distribution.Api/ConfigManager.Distribution.Api.csproj" />
+  </Folder>
+  <Folder Name="/Management/">
+    <Project Path="src/Management/ConfigManager.Management.Api/ConfigManager.Management.Api.csproj" />
+  </Folder>
+  <Folder Name="/Samples/">
+    <Project Path="src/Samples/Samples.Orders.Api/Samples.Orders.Api.csproj" />
+    <Project Path="src/Samples/Samples.Payments.Api/Samples.Payments.Api.csproj" />
+  </Folder>
+  <Folder Name="/Sdk/">
+    <Project Path="src/Sdk/ConfigManager.OpenFeature/ConfigManager.OpenFeature.csproj" />
+  </Folder>
+  <Project Path="tests/ConfigManager.Contracts.Tests/ConfigManager.Contracts.Tests.csproj" />
+  <Project Path="tests/ConfigManager.Distribution.Tests/ConfigManager.Distribution.Tests.csproj" />
+  <Project Path="tests/ConfigManager.EndToEnd.Tests/ConfigManager.EndToEnd.Tests.csproj" />
+  <Project Path="tests/ConfigManager.Management.IntegrationTests/ConfigManager.Management.IntegrationTests.csproj" />
+  <Project Path="tests/ConfigManager.Management.Tests/ConfigManager.Management.Tests.csproj" />
+  <Project Path="tests/ConfigManager.OpenFeature.Tests/ConfigManager.OpenFeature.Tests.csproj" />
+</Solution>
